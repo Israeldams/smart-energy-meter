@@ -2,7 +2,7 @@
 <html>
 <head>
   <link rel="apple-touch-icon" href="my-icon.png">
-<link rel="manifest" href="manifest.json">
+  <link rel="manifest" href="manifest.json">
   <title>Energy Meter - Consumer View</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
@@ -30,7 +30,7 @@
       border-radius: 12px;
     }
 
-    h3 { margin: 5px 0; text-align: center; }
+    h3 { margin: 5px 0; text-align: center; cursor: pointer; }
 
     .row {
       display: flex;
@@ -53,6 +53,31 @@
 
     .on { color: #22c55e; }   /* Green for ON */
     .off { color: #ef4444; }  /* Red for OFF */
+
+    /* Settings Styling */
+    #settingsArea {
+      display: none; /* Hidden by default */
+      border-top: 1px solid #334155;
+      padding-top: 10px;
+      margin-top: 10px;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 5px 0;
+      border-radius: 8px;
+      border: none;
+      box-sizing: border-box;
+    }
+    .btn-save {
+      width: 100%;
+      background: #3b82f6;
+      color: white;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
   </style>
 </head>
 
@@ -60,22 +85,29 @@
 
 <div class="container">
 
-  <!-- LIVE DATA -->
   <div class="card">
-    <h3>Smart Energy Meter</h3>
-    <div class="row"><span>V:</span><span id="v">--</span></div>
-    <div class="row"><span>I:</span><span id="i">--</span></div>
-    <div class="row"><span>P:</span><span id="p">--</span></div>
-    <div class="row"><span>kWh:</span><span id="e">--</span></div>
-    <div class="row"><span>₦:</span><span id="b">--</span></div>
-    <div class="row"><span>Tariff:</span><span id="t">--</span></div>
-    <div class="row"><span>Band:</span><span id="bd">--</span></div>
-    <div class="row"><span>Power:</span><span id="relayState" class="off">--</span></div>
+    <h3 onclick="toggleSettings()">Smart Energy Meter ⚙️</h3>
+    
+    <div id="settingsArea">
+      <p style="font-size: 12px; text-align: center;">Enter Meter ID to Connect</p>
+      <input type="number" id="meterIDInput" placeholder="Enter Meter ID (Channel ID)">
+      <button class="btn-save" onclick="saveMeterID()">Connect Meter</button>
+    </div>
+
+    <div id="displayArea">
+      <div class="row"><span>V:</span><span id="v">--</span></div>
+      <div class="row"><span>I:</span><span id="i">--</span></div>
+      <div class="row"><span>P:</span><span id="p">--</span></div>
+      <div class="row"><span>kWh:</span><span id="e">--</span></div>
+      <div class="row"><span>₦:</span><span id="b">--</span></div>
+      <div class="row"><span>Tariff:</span><span id="t">--</span></div>
+      <div class="row"><span>Band:</span><span id="bd">--</span></div>
+      <div class="row"><span>Power:</span><span id="relayState" class="off">--</span></div>
+    </div>
   </div>
 
-  <!-- STATUS -->
   <div class="card status">
-    <div id="status">Fetching data...</div>
+    <div id="status">Waiting for Meter ID...</div>
     <div id="time">--</div>
   </div>
 
@@ -83,24 +115,47 @@
 
 <script>
 const readAPI = "SPJRGJWPA6BSL7PS";
-const channelID = "3317890";
+let channelID = localStorage.getItem("savedMeterID") || "";
 
-// Store last good values
-let lastData = {
-  v:"--", i:"--", p:"--", e:"--", b:"--", t:"--", bd:"--", relay:"--"
-};
+// Toggle Settings View
+function toggleSettings() {
+  const area = document.getElementById("settingsArea");
+  area.style.display = (area.style.display === "block") ? "none" : "block";
+}
 
-// SAFE DISPLAY
+// Save ID to memory
+function saveMeterID() {
+  const val = document.getElementById("meterIDInput").value;
+  if(val) {
+    localStorage.setItem("savedMeterID", val);
+    channelID = val;
+    toggleSettings();
+    document.getElementById("status").innerText = "🔄 Connecting...";
+    fetchData();
+  }
+}
+
+let lastData = { v:"--", i:"--", p:"--", e:"--", b:"--", t:"--", bd:"--", relay:"--" };
+
 function safe(val, oldVal) {
   if (val === null || val === undefined || val === "" || val === "NaN") return oldVal;
   return val;
 }
 
-// FETCH DATA
 async function fetchData() {
+  if(!channelID) {
+    document.getElementById("status").innerText = "⚠️ Please tap title to set Meter ID";
+    return;
+  }
+
   try {
     const res = await fetch(`https://api.thingspeak.com/channels/${channelID}/feeds/last.json?api_key=${readAPI}`);
     const d = await res.json();
+
+    if(d === -1 || !d.field1) {
+       document.getElementById("status").innerText = "❌ Invalid Meter ID";
+       return;
+    }
 
     lastData.v = safe(d.field1, lastData.v);
     lastData.i = safe(d.field2, lastData.i);
@@ -109,13 +164,11 @@ async function fetchData() {
     lastData.b = safe(d.field5, lastData.b);
     lastData.t = safe(d.field6, lastData.t);
 
-    // BAND HANDLING
     let bandValue = d.field7 ? d.field7.toString().trim() : "";
     if (bandValue === "65" || bandValue.toUpperCase() === "A") lastData.bd = "A";
     else if (bandValue === "66" || bandValue.toUpperCase() === "B") lastData.bd = "B";
     else lastData.bd = "--";
 
-    // RELAY / POWER STATE
     let relayVal = d.field8;
     if (relayVal == 1) {
       lastData.relay = "ON";
@@ -125,7 +178,6 @@ async function fetchData() {
       document.getElementById("relayState").className = "off";
     }
 
-    // UPDATE DISPLAY
     document.getElementById("v").innerText = lastData.v;
     document.getElementById("i").innerText = lastData.i;
     document.getElementById("p").innerText = lastData.p;
@@ -135,16 +187,14 @@ async function fetchData() {
     document.getElementById("bd").innerText = lastData.bd;
     document.getElementById("relayState").innerText = lastData.relay;
 
-    document.getElementById("status").innerText = "✅ Data updated";
+    document.getElementById("status").innerText = "✅ Meter Online";
     document.getElementById("time").innerText = new Date().toLocaleTimeString();
 
   } catch(err) {
-    console.error(err);
-    document.getElementById("status").innerText = "❌ Fetch error";
+    document.getElementById("status").innerText = "❌ Connection Error";
   }
 }
 
-// AUTO REFRESH EVERY 5 SECONDS
 setInterval(fetchData, 5000);
 fetchData();
 </script>
