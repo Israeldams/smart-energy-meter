@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="manifest" href="manifest.json">
+  <title>Energy Meter - Consumer View</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      width: 95%;
+      max-width: 400px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 16px;
+      margin: 8px 0;
+      border-radius: 12px;
+    }
+
+    h3 { margin: 5px 0; text-align: center; }
+
+    .row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 16px;
+      margin: 4px 0;
+    }
+
+    .status {
+      font-size: 12px;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    #relayState {
+      font-weight: bold;
+      text-align: center;
+      margin-top: 4px;
+    }
+
+    .on { color: #22c55e; }   /* Green for ON */
+    .off { color: #ef4444; }  /* Red for OFF */
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <!-- LIVE DATA -->
+  <div class="card">
+    <h3>Smart Energy Meter</h3>
+    <div class="row"><span>V:</span><span id="v">--</span></div>
+    <div class="row"><span>I:</span><span id="i">--</span></div>
+    <div class="row"><span>P:</span><span id="p">--</span></div>
+    <div class="row"><span>kWh:</span><span id="e">--</span></div>
+    <div class="row"><span>₦:</span><span id="b">--</span></div>
+    <div class="row"><span>Tariff:</span><span id="t">--</span></div>
+    <div class="row"><span>Band:</span><span id="bd">--</span></div>
+    <div class="row"><span>Power:</span><span id="relayState" class="off">--</span></div>
+  </div>
+
+  <!-- STATUS -->
+  <div class="card status">
+    <div id="status">Fetching data...</div>
+    <div id="time">--</div>
+  </div>
+
+</div>
+
+<script>
+const readAPI = "SPJRGJWPA6BSL7PS";
+const channelID = "3317890";
+
+// Store last good values
+let lastData = {
+  v:"--", i:"--", p:"--", e:"--", b:"--", t:"--", bd:"--", relay:"--"
+};
+
+// SAFE DISPLAY
+function safe(val, oldVal) {
+  if (val === null || val === undefined || val === "" || val === "NaN") return oldVal;
+  return val;
+}
+
+// FETCH DATA
+async function fetchData() {
+  try {
+    const res = await fetch(`https://api.thingspeak.com/channels/${channelID}/feeds/last.json?api_key=${readAPI}`);
+    const d = await res.json();
+
+    lastData.v = safe(d.field1, lastData.v);
+    lastData.i = safe(d.field2, lastData.i);
+    lastData.p = safe(d.field3, lastData.p);
+    lastData.e = safe(d.field4, lastData.e);
+    lastData.b = safe(d.field5, lastData.b);
+    lastData.t = safe(d.field6, lastData.t);
+
+    // BAND HANDLING
+    let bandValue = d.field7 ? d.field7.toString().trim() : "";
+    if (bandValue === "65" || bandValue.toUpperCase() === "A") lastData.bd = "A";
+    else if (bandValue === "66" || bandValue.toUpperCase() === "B") lastData.bd = "B";
+    else lastData.bd = "--";
+
+    // RELAY / POWER STATE
+    let relayVal = d.field8;
+    if (relayVal == 1) {
+      lastData.relay = "ON";
+      document.getElementById("relayState").className = "on";
+    } else {
+      lastData.relay = "OFF";
+      document.getElementById("relayState").className = "off";
+    }
+
+    // UPDATE DISPLAY
+    document.getElementById("v").innerText = lastData.v;
+    document.getElementById("i").innerText = lastData.i;
+    document.getElementById("p").innerText = lastData.p;
+    document.getElementById("e").innerText = lastData.e;
+    document.getElementById("b").innerText = lastData.b;
+    document.getElementById("t").innerText = lastData.t;
+    document.getElementById("bd").innerText = lastData.bd;
+    document.getElementById("relayState").innerText = lastData.relay;
+
+    document.getElementById("status").innerText = "✅ Data updated";
+    document.getElementById("time").innerText = new Date().toLocaleTimeString();
+
+  } catch(err) {
+    console.error(err);
+    document.getElementById("status").innerText = "❌ Fetch error";
+  }
+}
+
+// AUTO REFRESH EVERY 5 SECONDS
+setInterval(fetchData, 5000);
+fetchData();
+</script>
+
+</body>
+</html>
